@@ -1,0 +1,18 @@
+[package]
+name = "prize-pop-studio"
+version = "1.0.0"
+description = "景品POP制作向け日本語プロンプト作成ツール"
+edition = "2021"
+license = "UNLICENSED"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

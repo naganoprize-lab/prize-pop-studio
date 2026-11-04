@@ -1,0 +1,4 @@
+/desktop/dist/
+/src-tauri/target/
+/artifacts/
+/src-tauri/gen/schemas/

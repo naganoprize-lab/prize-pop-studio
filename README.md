@@ -58,3 +58,62 @@ node tests/prompt-generator.test.cjs
 ```
 
 実装時のChromium自動確認は`tests/browser.cjs`を参照してください。これは開発環境のPlaywrightとChromiumを使う任意の検証であり、本番の依存関係ではありません。
+
+## Windows ポータブルEXE版（Tauri 2）
+
+Web版とは別に、既存の画面をローカルに埋め込んだWindows x64版をビルドできます。GitHub Pages用のファイルや公開設定は変更しません。アプリ用サーバー、外部API、CDNは不要です。初期サイズ1440×900、最小1100×700で、最大化・最小化・サイズ変更が可能です。
+
+### ダウンロード・起動
+
+初回はワークフローをmainへマージすると手動実行が表示されます。PRでは自動ビルドします。
+
+1. この変更のマージ後、GitHubの **Actions → Windows portable EXE → Run workflow** で `main` を選び実行します。
+2. 成功した実行の **Artifacts → Prize-POP-Studio-windows-x64** をダウンロードします（GitHubへのログインが必要な場合があります）。成果物の保持期間は30日です。
+3. Artifactsの外側のZIPを展開し、その中の `Prize-POP-Studio-windows-x64.zip` も展開してください。
+4. `Prize POP Studio.exe` を起動します。アプリのインストールは不要で、HTML・CSS・JavaScriptはEXEに埋め込まれています。
+
+対応環境はWindows 10/11 x64です。**Microsoft Edge WebView2 Runtimeが必要**です。通常Windows 11や多くのWindows 10に導入されていますが、未導入のPCではMicrosoft公式のEvergreen Runtimeを別途導入してください。ネットワークから隔離するPCでは事前にRuntimeを用意する必要があります。Runtimeの導入・更新と、アプリ自体のオフライン動作は別です。このZIPはWebView2のインストーラーを含みません。
+
+EXEはコード署名していないため、SmartScreen等で警告される場合があります。配布元・ビルドログとZIPのSHA256（ActionsのPackage portable EXEログ）を確認してください。
+
+### データ保存・移行
+
+プリセット・履歴・設定は従来と同じlocalStorageを使用しますが、**Web版とEXE版の保存領域は別**です。EXE版のWebView2ユーザーデータは通常 `%LOCALAPPDATA%\jp.naganoprize.prizepopstudio\` 配下に保存され、EXEと同じフォルダには保存されません。同じWindowsユーザー・アプリ識別子で起動すると復元されます。
+
+Web版でプリセットをJSONエクスポートし、EXE版でインポートすればプリセットを移行できます（逆方向も可能）。現在のJSON形式はプリセットのみで、履歴・編集中の本文・画像は含みません。必要な本文はテキスト保存してください。JSONとテキストの保存はEXE版ではWindowsの保存ダイアログを使用し、キャンセルできます。画像選択・JSON読込は従来のファイル選択を使い、画像を送信しません。
+
+**USBメモリ等で設定も持ち運べる完全ポータブル方式は未実装で、別途実装が必要です。** 今回の「ポータブル」はアプリのインストールが不要という意味です。EXEを別PCにコピーしても設定は移動しません。
+
+### Windowsでのローカルビルド
+
+事前にRust stable（MSVC）、Visual Studio C++ Build Tools（Desktop development with C++ / Windows SDK）、Python 3、WebView2 Runtimeを準備します。ビルド時の依存関係取得にはインターネットが必要ですが、アプリ実行時には不要です。npmは使いません。
+
+```powershell
+# リポジトリのルートで実行
+rustup target add x86_64-pc-windows-msvc
+cargo install tauri-cli --version 2.12.4 --locked
+python tests/stage-desktop.test.py
+cargo tauri build --target x86_64-pc-windows-msvc --no-bundle -- --locked
+```
+
+出力は `src-tauri/target/x86_64-pc-windows-msvc/release/prize-pop-studio.exe` です。`bundle.active: false` と `--no-bundle` でMSI/NSISなどのインストーラー生成を無効化しています。ActionsはWindows上でプロセス起動とメインウィンドウの出現だけをスモークテストし、このEXEとREADMEをZIPにまとめます。これはUI操作の実機確認を代替しません。`Cargo.lock`でアプリの依存関係を固定しています。
+
+`desktop/dist/` は `scripts/stage-desktop.py` が毎回生成する一時成果物です。公開用 `index.html`・`css/`・`js/` を変更せず必要なものだけコピーし、EXE側だけ非同期HTMLダイアログとネイティブ保存・コピーを組み込みます。Web版の開発・公開にRustやPythonは不要です。
+
+### 検証と残りの確認
+
+- `node tests/prompt-generator.test.cjs`：既存の生成エンジン検証。
+- `python tests/stage-desktop.test.py`：ステージングの再現性、Webファイル不変、埋め込み対象、ウィンドウ設定、インストーラー無効化を検証。Windows CIでも実行します。
+- `node tests/browser.cjs`：既存Web版のブラウザ検証（任意、開発環境のPlaywright/Chromiumが必要）。
+- `node tests/desktop-browser.cjs`：EXE用ファイルの画面・ダイアログ・保存復元をChromiumで検証。Rustとの通信は模擬するため、実際のWindows保存やクリップボードを検証するものではありません。
+
+**GitHub Actionsのビルド成功と、WindowsでのEXE起動成功は別の確認です。** Windows実機では、ZIP展開後に次を確認してください。
+
+- 起動、日本語UI、最小サイズ・最大化・最小化、用紙変更とプロンプト更新
+- コピーと他アプリへの貼り付け、プリセット保存、終了・再起動後の設定復元
+- JSON保存・インポート、テキスト保存、保存キャンセル、画像プレビュー
+- ネットワーク切断状態での起動と上記主要機能
+
+この開発環境はLinuxのため、実際のWindows EXE起動・WebView2・OS保存ダイアログ・Windowsクリップボードの確認は未実施です。CIや実機で未確認の状態を成功とみなさず、Actionsログと実機確認の結果を別々に記録してください。
+
+今回のLinux環境での結果：既存Webブラウザ検証、生成エンジン4テスト、ステージング2テスト、デスクトップ用ブラウザ模擬検証、公式Tauri設定スキーマ検証は通過しました。Windowsターゲットの依存関係取得は成功しましたが、`cargo check --target x86_64-pc-windows-msvc --locked` はLinux側のWindowsリソースコンパイラ `llvm-rc` 不在で停止しています。Windows EXE/ZIPの生成、Actionsでの成功、Windows実機での確認はまだ完了していません。
