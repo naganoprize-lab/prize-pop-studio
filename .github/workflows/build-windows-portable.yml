@@ -1,0 +1,103 @@
+name: Windows portable EXE
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - 'desktop/**'
+      - 'scripts/stage-desktop.py'
+      - 'index.html'
+      - 'css/**'
+      - 'js/**'
+      - '.github/workflows/build-windows-portable.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Verify Windows prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustc --version
+          cargo --version
+          # windows-latest includes Visual Studio C++ Build Tools and Windows SDK.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vs) { throw 'Visual Studio C++ Build Tools were not found.' }
+          Write-Host "Visual Studio C++: $vs"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Verify frontend and desktop staging
+        shell: pwsh
+        run: |
+          node tests/prompt-generator.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/stage-desktop.test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install Tauri 2 CLI
+        run: cargo install tauri-cli --version "2.12.4" --locked
+      - name: Build release EXE without installers
+        run: cargo tauri build --target x86_64-pc-windows-msvc --no-bundle -- --locked
+      - name: Windows EXE startup smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path 'src-tauri/target/x86_64-pc-windows-msvc/release/prize-pop-studio.exe').Path
+          $process = Start-Process -FilePath $exe -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Seconds 1
+              $process.Refresh()
+              if ($process.HasExited) { throw "EXE exited before showing a window. Exit code: $($process.ExitCode)" }
+              if ($process.MainWindowHandle -ne 0 -and $process.MainWindowTitle -eq 'Prize POP Studio') {
+                $ready = $true
+                break
+              }
+            }
+            if (!$ready) { throw 'No Prize POP Studio window appeared within 30 seconds. Check WebView2 Runtime and startup errors.' }
+            Write-Host 'PASS: Windows process stayed alive and the main window appeared. This does not verify UI interactions, file dialogs, or clipboard.'
+          } finally {
+            if (!$process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
+      - name: Package portable EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = 'src-tauri/target/x86_64-pc-windows-msvc/release/prize-pop-studio.exe'
+          if (!(Test-Path $exe)) { throw "Release executable missing: $exe" }
+          New-Item -ItemType Directory -Force artifacts/package | Out-Null
+          Copy-Item $exe 'artifacts/package/Prize POP Studio.exe'
+          Copy-Item README.md artifacts/package/README.md
+          Compress-Archive -Path artifacts/package/* -DestinationPath artifacts/Prize-POP-Studio-windows-x64.zip
+          Get-FileHash artifacts/Prize-POP-Studio-windows-x64.zip -Algorithm SHA256 | Format-List
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Prize-POP-Studio-windows-x64
+          path: artifacts/Prize-POP-Studio-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Build failure guidance
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host 'Build failed. Inspect the first error in the prerequisite, CLI installation, Cargo build, or packaging step above.'
+          Write-Host 'No installer is built. The expected output is target/x86_64-pc-windows-msvc/release/prize-pop-studio.exe.'
