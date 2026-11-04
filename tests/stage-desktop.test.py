@@ -14,13 +14,26 @@ class DesktopStaging(unittest.TestCase):
         before = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
         staged = ROOT / 'desktop/dist'
         def snapshot():
-            return {str(p.relative_to(staged)): p.read_bytes() for p in staged.rglob('*') if p.is_file()}
+            # Snapshot keys are portable identifiers, not native filesystem paths.
+            return {p.relative_to(staged).as_posix(): p.read_bytes() for p in staged.rglob('*') if p.is_file()}
         subprocess.run([sys.executable, str(ROOT / 'scripts/stage-desktop.py')], check=True, cwd=ROOT)
         first = snapshot()
         subprocess.run([sys.executable, str(ROOT / 'scripts/stage-desktop.py')], check=True, cwd=ROOT)
         self.assertEqual(first, snapshot())
         self.assertEqual(before, {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in files})
         self.assertEqual(set(first), {'index.html', 'css/style.css', 'js/app.js', 'js/storage.js', 'js/prompt-generator.js', 'js/desktop-runtime.js'})
+        for name in ('css/style.css', 'js/storage.js', 'js/prompt-generator.js'):
+            self.assertEqual(first[name], (ROOT / name).read_bytes())
+        self.assertEqual(first['js/desktop-runtime.js'], (ROOT / 'desktop/runtime.js').read_bytes())
+        expected_app = (ROOT / 'js/app.js').read_text(encoding='utf-8')
+        expected_app = expected_app.replace('onclick=()=>', 'onclick=async()=>')
+        expected_app = expected_app.replace('prompt(', 'await window.desktopDialogs.prompt(')
+        expected_app = expected_app.replace('confirm(', 'await window.desktopDialogs.confirm(')
+        self.assertEqual((staged / 'js/app.js').read_text(encoding='utf-8'), expected_app)
+        expected_html = (ROOT / 'index.html').read_text(encoding='utf-8').replace(
+            '<script defer src="./js/app.js"></script>',
+            '<script defer src="./js/desktop-runtime.js"></script><script defer src="./js/app.js"></script>')
+        self.assertEqual((staged / 'index.html').read_text(encoding='utf-8'), expected_html)
         self.assertIn(b'await window.desktopDialogs.prompt(', first['js/app.js'])
         self.assertNotIn(b'window.desktopDialogs', (ROOT / 'js/app.js').read_bytes())
 
