@@ -21,8 +21,8 @@ class DesktopStaging(unittest.TestCase):
         subprocess.run([sys.executable, str(ROOT / 'scripts/stage-desktop.py')], check=True, cwd=ROOT)
         self.assertEqual(first, snapshot())
         self.assertEqual(before, {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in files})
-        self.assertEqual(set(first), {'index.html', 'css/style.css', 'js/app.js', 'js/storage.js', 'js/prompt-generator.js', 'js/desktop-runtime.js'})
-        for name in ('css/style.css', 'js/storage.js', 'js/prompt-generator.js'):
+        self.assertEqual(set(first), {'index.html', 'css/style.css', 'js/app.js', 'js/storage.js', 'js/prompt-generator.js', 'js/desktop-runtime.js', 'js/standard-presets.js'})
+        for name in ('css/style.css', 'js/storage.js', 'js/prompt-generator.js', 'js/standard-presets.js'):
             self.assertEqual(first[name], (ROOT / name).read_bytes())
         self.assertEqual(first['js/desktop-runtime.js'], (ROOT / 'desktop/runtime.js').read_bytes())
         expected_app = (ROOT / 'js/app.js').read_text(encoding='utf-8')
