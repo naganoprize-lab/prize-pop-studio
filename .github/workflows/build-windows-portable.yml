@@ -51,6 +51,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/modes.test.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/image-first.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/stage-desktop.test.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install Tauri 2 CLI
